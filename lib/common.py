@@ -1,10 +1,8 @@
 def count_lines(fname):
     with open(fname) as f:
-        return sum(1 for line in f)
+        return sum(1 for _ in f)
 
 
 def detokenize(tokens):
-    ret = ''
-    for g, a in zip(tokens['gloss'], tokens['after']):
-        ret += g + a
+    ret = ''.join(g + a for g, a in zip(tokens['gloss'], tokens['after']))
     return ret.strip()

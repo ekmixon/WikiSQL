@@ -25,7 +25,14 @@ class Query:
             if other.ordered:
                 conds = [(col, op, str(cond).lower()) for col, op, cond in self.conditions] == [(col, op, str(cond).lower()) for col, op, cond in other.conditions]
             else:
-                conds = set([(col, op, str(cond).lower()) for col, op, cond in self.conditions]) == set([(col, op, str(cond).lower()) for col, op, cond in other.conditions])
+                conds = {
+                    (col, op, str(cond).lower())
+                    for col, op, cond in self.conditions
+                } == {
+                    (col, op, str(cond).lower())
+                    for col, op, cond in other.conditions
+                }
+
 
             return indices and conds
         return NotImplemented
@@ -40,20 +47,21 @@ class Query:
 
     def __repr__(self):
         rep = 'SELECT {agg} {sel} FROM table'.format(
-            agg=self.agg_ops[self.agg_index],
-            sel='col{}'.format(self.sel_index),
+            agg=self.agg_ops[self.agg_index], sel=f'col{self.sel_index}'
         )
+
         if self.conditions:
-            rep +=  ' WHERE ' + ' AND '.join(['{} {} {}'.format('col{}'.format(i), self.cond_ops[o], v) for i, o, v in self.conditions])
+            rep += ' WHERE ' + ' AND '.join(
+                [f'col{i} {self.cond_ops[o]} {v}' for i, o, v in self.conditions]
+            )
+
         return rep
 
     def to_dict(self):
         return {'sel': self.sel_index, 'agg': self.agg_index, 'conds': self.conditions}
 
     def lower(self):
-        conds = []
-        for col, op, cond in self.conditions:
-            conds.append([col, op, cond.lower()])
+        conds = [[col, op, cond.lower()] for col, op, cond in self.conditions]
         return self.__class__(self.sel_index, self.agg_index, conds)
 
     @classmethod
@@ -62,9 +70,7 @@ class Query:
 
     @classmethod
     def from_tokenized_dict(cls, d):
-        conds = []
-        for col, op, val in d['conds']:
-            conds.append([col, op, detokenize(val)])
+        conds = [[col, op, detokenize(val)] for col, op, val in d['conds']]
         return cls(d['sel'], d['agg'], conds)
 
     @classmethod
@@ -94,24 +100,24 @@ class Query:
         headers_no_whitespcae = [re.sub(re_whitespace, '', h) for h in headers]
 
         # get select
-        if 'symselect' != terms.pop(0)['word']:
+        if terms.pop(0)['word'] != 'symselect':
             raise Exception('Missing symselect operator')
 
         # get aggregation
-        if 'symagg' != terms.pop(0)['word']:
+        if terms.pop(0)['word'] != 'symagg':
             raise Exception('Missing symagg operator')
         agg_op = terms.pop(0)['word']
 
         if agg_op == 'symcol':
             agg_op = ''
         else:
-            if 'symcol' != terms.pop(0)['word']:
+            if terms.pop(0)['word'] != 'symcol':
                 raise Exception('Missing aggregation column')
         try:
             agg_op = cls.agg_ops.index(agg_op.upper())
         except Exception as e:
             raise Exception('Invalid agg op {}'.format(agg_op))
-        
+
         def find_column(name):
             return headers_no_whitespcae.index(re.sub(re_whitespace, '', name))
 
@@ -122,6 +128,7 @@ class Query:
                 ret['after'].append(t['after'])
                 ret['gloss'].append(t['gloss'])
             return ret
+
         where_index = [i for i, t in enumerate(terms) if t['word'] == 'symwhere']
         where_index = where_index[0] if where_index else len(terms)
         flat = flatten(terms[:where_index])

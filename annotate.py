@@ -33,8 +33,11 @@ def annotate(sentence, lower=True):
 
 
 def annotate_example(example, table):
-    ann = {'table_id': example['table_id']}
-    ann['question'] = annotate(example['question'])
+    ann = {
+        'table_id': example['table_id'],
+        'question': annotate(example['question']),
+    }
+
     ann['table'] = {
         'header': [annotate(h) for h in table['header']],
     }
@@ -42,19 +45,22 @@ def annotate_example(example, table):
     for c in ann['query']['conds']:
         c[-1] = annotate(str(c[-1]))
 
-    q1 = 'SYMSELECT SYMAGG {} SYMCOL {}'.format(Query.agg_ops[sql['agg']], table['header'][sql['sel']])
-    q2 = ['SYMCOL {} SYMOP {} SYMCOND {}'.format(table['header'][col], Query.cond_ops[op], detokenize(cond)) for col, op, cond in sql['conds']]
-    if q2:
-        q2 = 'SYMWHERE ' + ' SYMAND '.join(q2) + ' SYMEND'
-    else:
-        q2 = 'SYMEND'
+    q1 = f"SYMSELECT SYMAGG {Query.agg_ops[sql['agg']]} SYMCOL {table['header'][sql['sel']]}"
+
+    q2 = [
+        f"SYMCOL {table['header'][col]} SYMOP {Query.cond_ops[op]} SYMCOND {detokenize(cond)}"
+        for col, op, cond in sql['conds']
+    ]
+
+    q2 = 'SYMWHERE ' + ' SYMAND '.join(q2) + ' SYMEND' if q2 else 'SYMEND'
     inp = 'SYMSYMS {syms} SYMAGGOPS {aggops} SYMCONDOPS {condops} SYMTABLE {table} SYMQUESTION {question} SYMEND'.format(
-        syms=' '.join(['SYM' + s for s in Query.syms]),
-        table=' '.join(['SYMCOL ' + s for s in table['header']]),
+        syms=' '.join([f'SYM{s}' for s in Query.syms]),
+        table=' '.join([f'SYMCOL {s}' for s in table['header']]),
         question=example['question'],
-        aggops=' '.join([s for s in Query.agg_ops]),
-        condops=' '.join([s for s in Query.cond_ops]),
+        aggops=' '.join(list(Query.agg_ops)),
+        condops=' '.join(list(Query.cond_ops)),
     )
+
     ann['seq_input'] = annotate(inp)
     out = '{q1} {q2}'.format(q1=q1, q2=q2) if q2 else q1
     ann['seq_output'] = annotate(out)
@@ -65,7 +71,7 @@ def annotate_example(example, table):
 
 
 def is_valid_example(e):
-    if not all([h['words'] for h in e['table']['header']]):
+    if not all(h['words'] for h in e['table']['header']):
         return False
     headers = [detokenize(h).lower() for h in e['table']['header']]
     if len(headers) != len(set(headers)):
@@ -73,13 +79,19 @@ def is_valid_example(e):
     input_vocab = set(e['seq_input']['words'])
     for w in e['seq_output']['words']:
         if w not in input_vocab:
-            print('query word "{}" is not in input vocabulary.\n{}'.format(w, e['seq_input']['words']))
+            print(
+                f"""query word "{w}" is not in input vocabulary.\n{e['seq_input']['words']}"""
+            )
+
             return False
     input_vocab = set(e['question']['words'])
     for col, op, cond in e['query']['conds']:
         for w in cond['words']:
             if w not in input_vocab:
-                print('cond word "{}" is not in input vocabulary.\n{}'.format(w, e['question']['words']))
+                print(
+                    f"""cond word "{w}" is not in input vocabulary.\n{e['question']['words']}"""
+                )
+
                 return False
     return True
 
@@ -94,11 +106,11 @@ if __name__ == '__main__':
         os.makedirs(args.dout)
 
     for split in ['train', 'dev', 'test']:
-        fsplit = os.path.join(args.din, split) + '.jsonl'
-        ftable = os.path.join(args.din, split) + '.tables.jsonl'
-        fout = os.path.join(args.dout, split) + '.jsonl'
+        fsplit = f'{os.path.join(args.din, split)}.jsonl'
+        ftable = f'{os.path.join(args.din, split)}.tables.jsonl'
+        fout = f'{os.path.join(args.dout, split)}.jsonl'
 
-        print('annotating {}'.format(fsplit))
+        print(f'annotating {fsplit}')
         with open(fsplit) as fs, open(ftable) as ft, open(fout, 'wt') as fo:
             print('loading tables')
             tables = {}
@@ -116,7 +128,7 @@ if __name__ == '__main__':
                 gold = Query.from_tokenized_dict(a['query'])
                 reconstruct = Query.from_sequence(a['seq_output'], a['table'], lowercase=True)
                 if gold.lower() != reconstruct.lower():
-                    raise Exception ('Expected:\n{}\nGot:\n{}'.format(gold, reconstruct))
+                    raise Exception(f'Expected:\n{gold}\nGot:\n{reconstruct}')
                 fo.write(json.dumps(a) + '\n')
                 n_written += 1
-            print('wrote {} examples'.format(n_written))
+            print(f'wrote {n_written} examples')
